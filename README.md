@@ -5,6 +5,7 @@
 Built for the Binance Wallet × BNB Chain **Agent ID Hackathon**.
 
 - **Live app:** https://neqro.github.io/kefil/
+- **Demo video (60s):** https://neqro.github.io/kefil/demo.mp4
 - **Contract (BNB Smart Chain, verified):** [`0xD9B175526469D1cD0094F25B65482b580514c215`](https://bscscan.com/address/0xD9B175526469D1cD0094F25B65482b580514c215#code)
 
 ## How Agent ID is used
