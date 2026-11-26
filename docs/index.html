@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kefil — Trust Network for Agent IDs</title>
+<style>
+  :root { --bg:#0e0f13; --card:#171920; --line:#2a2d38; --text:#e9eaf0; --muted:#9097a8; --gold:#f0b90b; --ok:#3ecf8e; --bad:#ff5c6c; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; justify-content:space-between; align-items:center; padding:18px 24px; border-bottom:1px solid var(--line); }
+  h1 { font-size:20px; margin:0; } h1 span { color:var(--gold); }
+  main { max-width:960px; margin:0 auto; padding:24px; display:grid; gap:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; }
+  .card h2 { margin:0 0 12px; font-size:16px; }
+  .muted { color:var(--muted); font-size:13px; line-height:1.5; }
+  button { background:var(--gold); color:#111; border:0; border-radius:10px; padding:10px 16px; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
+  button.danger { background:var(--bad); color:#fff; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  input { width:100%; background:#0f1116; color:var(--text); border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:14px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; } .row > * { flex:1; min-width:160px; }
+  .stats { display:grid; grid-template-columns: repeat(auto-fit,minmax(120px,1fr)); gap:10px; }
+  .stat { background:#0f1116; border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .stat b { display:block; font-size:22px; margin-top:4px; }
+  .pill { display:inline-block; padding:3px 10px; border-radius:99px; font-size:12px; font-weight:600; }
+  .pill.ok { background:#123b2a; color:var(--ok); } .pill.bad { background:#3d1419; color:var(--bad); } .pill.neutral { background:#262833; color:var(--muted); }
+  ul.list { list-style:none; margin:0; padding:0; } ul.list li { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-family: ui-monospace, monospace; font-size:13px; }
+  a { color:var(--gold); }
+  #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#222531; border:1px solid var(--line); padding:12px 18px; border-radius:10px; display:none; max-width:90vw; }
+  pre { background:#0f1116; border:1px solid var(--line); border-radius:10px; padding:12px; overflow:auto; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Kefil</span> · Trust Network for Agent IDs</h1>
+  <button id="connect">Connect wallet</button>
+</header>
+<main>
+  <section class="card">
+    <h2>What is Kefil?</h2>
+    <p class="muted">
+      "Kefil" means <i>guarantor</i> in Turkish. Agent ID holders vouch for agents they trust and flag the ones that misbehave.
+      Vouching puts your own reputation at stake: if an agent you vouched for gets flagged by 5 holders, your score drops too.
+      The result is an open, on-chain trust score that any dApp on BNB Chain can read in one call to gate access, airdrops or payments.
+    </p>
+    <p class="muted">Score = 10 × valid vouches − 10 × flags received − 15 × vouches given to agents that became risky.
+      Only Agent ID holders can vouch, flag or be scored. No owner, no admin keys, no token, no funds held. Every action is a normal wallet transaction you confirm yourself.</p>
+  </section>
+
+  <section class="card" id="me">
+    <h2>Your profile</h2>
+    <p class="muted" id="meHint">Connect a wallet that holds an Agent ID (BNB Chain).</p>
+    <div class="stats" id="meStats" hidden></div>
+  </section>
+
+  <section class="card">
+    <h2>Check an agent</h2>
+    <div class="row">
+      <input id="target" placeholder="Agent wallet address (0x…)" />
+      <button id="check" class="ghost" style="flex:0">Check</button>
+    </div>
+    <div id="targetOut" style="margin-top:14px"></div>
+  </section>
+
+  <section class="card">
+    <h2>Vouch or flag</h2>
+    <div class="row" style="margin-bottom:10px">
+      <input id="note" maxlength="140" placeholder="Short note or reason (optional, max 140 chars)" />
+    </div>
+    <div class="row">
+      <button id="vouch">Vouch (kefil ol)</button>
+      <button id="revokeVouch" class="ghost">Revoke vouch</button>
+      <button id="flag" class="danger">Flag</button>
+      <button id="revokeFlag" class="ghost">Revoke flag</button>
+    </div>
+    <p class="muted">Acts on the address in "Check an agent". You can vouch for up to 20 agents at a time.</p>
+  </section>
+
+  <section class="card">
+    <h2>Your network</h2>
+    <div class="row">
+      <div><p class="muted">Vouched for you</p><ul class="list" id="inList"></ul></div>
+      <div><p class="muted">You vouched for</p><ul class="list" id="outList"></ul></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>For builders: gate your dApp with Kefil</h2>
+<pre>interface IKefil { function isTrusted(address a, int256 minScore) external view returns (bool); }
+
+require(IKefil(KEFIL).isTrusted(msg.sender, 30), "need 3+ trusted vouches");</pre>
+    <p class="muted">Contract: <a id="contractLink" target="_blank" rel="noopener"></a> · Agent ID: <a target="_blank" rel="noopener" href="https://bscscan.com/address/0x60b9262456de011f7d15a54cdd8c48baaa8b022f">0x60b9…022f</a></p>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script type="module">
+import { ethers } from 'https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.min.js';
+
+// ⬇️ Deploy edildikten sonra kontrat adresini buraya yaz.
+const KEFIL = '0xD9B175526469D1cD0094F25B65482b580514c215';
+const BSC = { chainId: '0x38', chainName: 'BNB Smart Chain', nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+  rpcUrls: ['https://bsc-dataseed.binance.org'], blockExplorerUrls: ['https://bscscan.com'] };
+const ABI = [
+  'error AlreadyDone()', 'error NoAgentId(address account)', 'error NotFound()', 'error NoteTooLong()', 'error SelfAction()', 'error TooManyVouches()',
+  'function vouch(address target, string note)', 'function revokeVouch(address target)',
+  'function flag(address target, string reason)', 'function revokeFlag(address target)',
+  'function profile(address a) view returns (bool holdsAgentId, int256 score, uint256 vouchesIn, uint256 vouchesOut, uint256 flags, uint256 bad, bool risky)',
+  'function vouchersOf(address a) view returns (address[])', 'function vouchedBy(address a) view returns (address[])',
+  'function hasVouched(address voucher, address target) view returns (bool)', 'function hasFlagged(address, address) view returns (bool)',
+];
+const ERRORS = { AlreadyDone: 'You already did this for that agent.', NoAgentId: 'Both wallets need an Agent ID.', NotFound: 'Nothing to revoke.',
+  NoteTooLong: 'Note is longer than 140 characters.', SelfAction: 'You cannot vouch for or flag yourself.', TooManyVouches: 'You already vouch for 20 agents. Revoke one first.' };
+
+const $ = (id) => document.getElementById(id);
+const short = (a) => a.slice(0, 6) + '…' + a.slice(-4);
+const toast = (m, ms = 4000) => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', ms); };
+const readProvider = new ethers.JsonRpcProvider('https://bsc-dataseed.binance.org', 56, { staticNetwork: true });
+let reader = new ethers.Contract(KEFIL, ABI, readProvider), writer, me;
+
+$('contractLink').href = `https://bscscan.com/address/${KEFIL}#code`;
+$('contractLink').textContent = short(KEFIL);
+
+function statsHtml(p) {
+  const pill = !p.holdsAgentId ? '<span class="pill neutral">No Agent ID</span>' : p.risky ? '<span class="pill bad">Risky</span>' : '<span class="pill ok">Agent</span>';
+  return `<div class="stat">Status<b>${pill}</b></div>
+    <div class="stat">Trust score<b>${p.score}</b></div>
+    <div class="stat">Valid vouches<b>${p.vouchesIn}</b></div>
+    <div class="stat">Vouching for<b>${p.vouchesOut}</b></div>
+    <div class="stat">Flags<b>${p.flags}</b></div>
+    <div class="stat">Bad vouches<b>${p.bad}</b></div>`;
+}
+
+async function refreshMe() {
+  if (!me) return;
+  const p = await reader.profile(me);
+  $('meHint').textContent = p.holdsAgentId ? short(me) : `${short(me)} has no Agent ID. Claim one in the Binance App: Wallet > Agent ID.`;
+  $('meStats').innerHTML = statsHtml(p); $('meStats').hidden = false;
+  const [ins, outs] = await Promise.all([reader.vouchersOf(me), reader.vouchedBy(me)]);
+  $('inList').innerHTML = ins.map((a) => `<li><a href="#" data-a="${a}">${short(a)}</a></li>`).join('') || '<li class="muted">No one yet. Ask a friend with an Agent ID to vouch for you.</li>';
+  $('outList').innerHTML = outs.map((a) => `<li><a href="#" data-a="${a}">${short(a)}</a></li>`).join('') || '<li class="muted">You have not vouched for anyone.</li>';
+  document.querySelectorAll('[data-a]').forEach((el) => el.onclick = (e) => { e.preventDefault(); $('target').value = el.dataset.a; check(); });
+}
+
+async function check() {
+  const a = $('target').value.trim();
+  if (!ethers.isAddress(a)) return toast('Enter a valid 0x address.');
+  const p = await reader.profile(a);
+  let rel = '';
+  if (me) {
+    const [v, f] = await Promise.all([reader.hasVouched(me, a), reader.hasFlagged(me, a)]);
+    rel = `<p class="muted">You ${v ? 'vouch for' : 'do not vouch for'} this agent${f ? ' and have flagged it' : ''}.</p>`;
+  }
+  $('targetOut').innerHTML = `<div class="stats">${statsHtml(p)}</div>${rel}`;
+}
+
+async function connect() {
+  const eth = window.ethereum || window.binancew3w?.ethereum;
+  if (!eth) return toast('No wallet found. Install Binance Wallet or MetaMask.');
+  await eth.request({ method: 'eth_requestAccounts' });
+  try { await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: BSC.chainId }] }); }
+  catch (e) { if (e.code === 4902) await eth.request({ method: 'wallet_addEthereumChain', params: [BSC] }); else throw e; }
+  const provider = new ethers.BrowserProvider(eth);
+  const signer = await provider.getSigner();
+  me = await signer.getAddress();
+  writer = new ethers.Contract(KEFIL, ABI, signer);
+  $('connect').textContent = short(me);
+  eth.on?.('accountsChanged', () => location.reload());
+  eth.on?.('chainChanged', () => location.reload());
+  await refreshMe();
+}
+
+async function send(fn, ...args) {
+  if (!writer) return toast('Connect your wallet first.');
+  const a = $('target').value.trim();
+  if (!ethers.isAddress(a)) return toast('Enter the agent address in "Check an agent".');
+  try {
+    const tx = await writer[fn](a, ...args);
+    toast('Sent. Waiting for confirmation…', 60000);
+    await tx.wait();
+    toast('Done ✓'); await Promise.all([refreshMe(), check()]);
+  } catch (e) {
+    const name = e?.revert?.name; toast(ERRORS[name] || e.shortMessage || e.message);
+  }
+}
+
+$('connect').onclick = () => connect().catch((e) => toast(e.shortMessage || e.message));
+$('check').onclick = () => check().catch((e) => toast(e.shortMessage || e.message));
+$('vouch').onclick = () => send('vouch', $('note').value);
+$('revokeVouch').onclick = () => send('revokeVouch');
+$('flag').onclick = () => send('flag', $('note').value);
+$('revokeFlag').onclick = () => send('revokeFlag');
+</script>
+</body>
+</html>
